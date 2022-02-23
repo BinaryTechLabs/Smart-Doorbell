@@ -1,0 +1,184 @@
+esphome:
+  name: doorbell
+
+esp8266:
+  board: d1_mini
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+
+ota:
+  password: "de832e54712fb5138ab948af90db4ffd"
+
+# WiFi connection settings
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Example configuration entry
+  #manual_ip:
+  #  static_ip: 192.168.1.31
+  #  gateway: 192.168.1.254
+  #  subnet: 255.255.255.0
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Doorbell Fallback Hotspot"
+    password: "8xSXdyZkitis"
+
+captive_portal:
+
+# Example configuration entries 
+# require uncommenting if used
+
+
+# Example configuration entry
+#mqtt:
+#  broker: !secret mqtt_addr
+#  username: !secret mqtt_user
+#  password: !secret mqtt_password
+
+
+# Enable Web server
+web_server:
+  port: 80
+  auth:
+    username: admin
+    password: !secret web_server_password
+
+# Sync time with Home Assistant
+time:
+  - platform: homeassistant
+    id: homeassistant_time
+
+# Text sensors - general information
+text_sensor:
+  # Exposes ESPHome firmware version at 
+  # time of compile via a sensor
+  - platform: version
+    name: Doorbell ESPHome Version
+    hide_timestamp: true
+
+  # Exposes WiFi information via sensors
+  # Can use if you want, I only use to troubleshoot
+  - platform: wifi_info
+    ip_address:
+      name: Doorbell IP
+  #  ssid:
+  #    name: Doorbell SSID
+  #  bssid:
+  #    name: Doorbell BSSID
+  #  mac_address:
+  #    name: ESP Mac Wifi Address
+  #  scan_results:
+  #    name: ESP Latest Scan Results
+  
+  # Creates a text sensor with human 
+  # readable output
+  - platform: template
+    name: Doorbell Uptime Human Readable
+    id: uptime_human
+    icon: mdi:clock-start
+
+# Sensors - general information
+sensor:
+  # Uptime sensor
+  - platform: uptime
+    name: Doorbell Uptime
+    id: doorbell_uptime
+    update_interval: 60s
+    on_raw_value:
+      then:
+        - text_sensor.template.publish:
+            id: uptime_human
+            state: !lambda |-
+              int seconds = round(id(doorbell_uptime).raw_state);
+              int days = seconds / (24 * 3600);
+              seconds = seconds % (24 * 3600);
+              int hours = seconds / 3600;
+              seconds = seconds % 3600;
+              int minutes = seconds /  60;
+              seconds = seconds % 60;
+              return (
+                (days ? to_string(days) + "d " : "") +
+                (hours ? to_string(hours) + "h " : "") +
+                (minutes ? to_string(minutes) + "m " : "") +
+                (to_string(seconds) + "s")
+              ).c_str();
+    
+  # WiFi Signal sensor measured in 
+  # decibel-milliwatts (dBm)
+  - platform: wifi_signal
+    name: "Doorbell WiFi Signal"
+    update_interval: 60s
+
+# Global variable to store the on/off 
+# state of the chime
+globals:
+  - id: doorbell_chime
+    type: bool
+    restore_value: true
+    initial_value: 'true'
+
+# Exposed switches
+switch:
+  # Switch to Reboot the WeMos D1 Mini
+  - platform: restart
+    name: Doorbell Restart
+
+  # Switch to turn on/off the chime.
+  - platform: gpio
+    id: bs_doorbell_relay
+    inverted: false
+    name: Doorbell Chime Relay
+    pin: D7
+
+  # Switch to turn on/off chime, for
+  # automating ie, nighttime, or baby is 
+  # sleeping
+  #
+  # It creates a "virtual" switch based
+  # on the global variable.
+  - platform: template
+    name: Doorbell Chime Active
+    id: doorbell_chime_active
+    restore_state: false
+    turn_on_action:
+      - globals.set:
+          id: doorbell_chime
+          value: 'true'
+    turn_off_action:
+      - globals.set:
+          id: doorbell_chime
+          value: 'false'
+    lambda: |-
+      return id(doorbell_chime);
+# Binary sensor representing the
+# Doorbell button push.
+binary_sensor:
+  - platform: gpio
+    id: ent_button_front
+    name: Doorbell Button
+    pin:
+      # Connected to GPIO on the WeMos D1 Mini
+      number: D0
+      mode: INPUT_PULLDOWN
+      inverted: false
+    #filters:
+      # Filter to debounce the button press.
+    #  - delayed_on: 5ms
+    #  - delayed_off: 5ms
+    on_press:
+      # Only turn on the chime when it is active.
+      then:
+        if:
+          condition:
+            - switch.is_on: doorbell_chime_active
+          then:
+            - switch.turn_on: bs_doorbell_relay
+    on_release:
+      # On release, turn of the chime.
+      - switch.turn_off: bs_doorbell_relay
