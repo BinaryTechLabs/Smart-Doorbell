@@ -5,6 +5,9 @@ You can reference all ESPHome components on their web page @ [ESPHome](https://e
 
 Make sure to add your secrets.yaml file with your wifi_ssid, wifi_password and web_server_password
 
+## Check out the How-To Video
+[Smart Doorbell Conversion](https://www.youtube.com/watch?v=8206KlRJVLc)
+
 ## Quick Links to Sections & Components in doorbell.yaml
 
 [Web Server Compnent](https://esphome.io/components/web_server.html?highlight=webserver)\
